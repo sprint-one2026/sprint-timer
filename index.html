@@ -1,0 +1,326 @@
+
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>陸上2点間タイマー</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#091521;color:white;font-family:Arial,sans-serif}
+header{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px;flex-wrap:wrap}
+button{background:#176de0;color:white;border:0;border-radius:8px;padding:9px 13px;font-weight:bold}
+#stage{position:relative;width:100%;aspect-ratio:16/9;background:#182938;touch-action:none}
+video{width:100%;height:100%;object-fit:fill}
+canvas{position:absolute;inset:0;width:100%;height:100%;touch-action:none}
+#timer{position:absolute;top:8px;left:50%;transform:translateX(-50%);font-size:32px;font-weight:bold;background:#091521dd;padding:5px 18px;border-radius:10px;pointer-events:none}
+#status{font-size:13px;color:#aee3ff}
+.controls{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:10px}
+input{max-width:85px}
+input[type=range]{max-width:120px}
+#history{padding:8px;font-size:13px}
+#history div{border-bottom:1px solid #354657;padding:5px}
+small{color:#afc4d5}
+</style>
+</head>
+<body>
+<header>
+<strong>SPRINT TIMER</strong>
+<span id="status">カメラ未起動</span>
+<button id="camera">カメラ開始</button>
+<button id="arm">計測準備</button>
+<button id="reset">リセット</button>
+</header>
+
+<div id="stage">
+<video id="video" autoplay muted playsinline></video>
+<canvas id="overlay"></canvas>
+<div id="timer">0.000</div>
+</div>
+
+<div class="controls">
+<label>距離
+<input id="distance" type="number" value="10" min="0.1" step="0.1">m
+</label>
+<label>感度
+<input id="sensitivity" type="range" min="8" max="70" value="25">
+</label>
+<label>検知高さ
+<input id="height" type="range" min="15" max="90" value="65">
+</label>
+<button id="clear">履歴消去</button>
+</div>
+<div id="history"></div>
+<div class="controls">
+<small>緑線＝開始、赤線＝停止。線は指で左右に移動できます。HTTPSで公開して使用してください。</small>
+</div>
+
+<script>
+(()=>{
+"use strict";
+
+const $=id=>document.getElementById(id);
+const video=$("video");
+const canvas=$("overlay");
+const ctx=canvas.getContext("2d");
+const sample=document.createElement("canvas");
+const sc=sample.getContext("2d",{willReadFrequently:true});
+
+const S={
+  lines:[0.24,0.77],
+  drag:-1,
+  state:"idle",
+  camera:false,
+  start:0,
+  finish:0,
+  previous:null,
+  hits:[0,0],
+  lastTrigger:[0,0],
+  history:[],
+  stream:null
+};
+
+try{
+ S.history=JSON.parse(localStorage.getItem("sprintHistory")||"[]");
+}catch(e){}
+
+function status(s){
+ $("status").textContent=s;
+}
+
+function showHistory(){
+ const el=$("history");
+ el.replaceChildren();
+ S.history.slice(0,20).forEach(r=>{
+  const d=document.createElement("div");
+  d.textContent=`${r.date} | ${r.distance}m | ${r.time.toFixed(3)}秒`;
+  el.appendChild(d);
+ });
+}
+showHistory();
+
+function resize(){
+ const r=canvas.getBoundingClientRect();
+ const d=Math.min(devicePixelRatio||1,2);
+ canvas.width=Math.round(r.width*d);
+ canvas.height=Math.round(r.height*d);
+ ctx.setTransform(d,0,0,d,0,0);
+ draw();
+}
+
+function draw(){
+ const w=canvas.clientWidth;
+ const h=canvas.clientHeight;
+ const cy=h*Number($("height").value)/100;
+ ctx.clearRect(0,0,w,h);
+
+ S.lines.forEach((x,i)=>{
+  const px=x*w;
+  const color=i===0?"#31f17c":"#ff5050";
+  ctx.strokeStyle=color;
+  ctx.lineWidth=3;
+  ctx.beginPath();
+  ctx.moveTo(px,0);
+  ctx.lineTo(px,h);
+  ctx.stroke();
+
+  ctx.lineWidth=9;
+  ctx.beginPath();
+  ctx.moveTo(px,cy-h*.13);
+  ctx.lineTo(px,cy+h*.13);
+  ctx.stroke();
+
+  ctx.fillStyle=color;
+  ctx.beginPath();
+  ctx.arc(px,cy,10,0,Math.PI*2);
+  ctx.fill();
+
+  ctx.font="bold 13px Arial";
+  ctx.textAlign="center";
+  ctx.fillText(i===0?"START":"STOP",px,Math.min(h-12,cy+25));
+ });
+}
+
+function reset(){
+ S.state="idle";
+ S.previous=null;
+ S.hits=[0,0];
+ S.lastTrigger=[0,0];
+ $("timer").textContent="0.000";
+ status(S.camera?"待機中":"カメラ未起動");
+}
+
+function arm(){
+ if(!S.camera){
+  status("先にカメラを起動");
+  return;
+ }
+ reset();
+ S.state="calibrate";
+ S.calUntil=performance.now()+1200;
+ status("背景確認中");
+}
+
+function trigger(i,t){
+ if(i===0 && S.state==="ready"){
+  S.start=t;
+  S.state="running";
+  status("計測中");
+ }else if(i===1 && S.state==="running" && t>S.start+80){
+  S.finish=t;
+  S.state="done";
+  const sec=(t-S.start)/1000;
+  const distance=Number($("distance").value)||10;
+  $("timer").textContent=sec.toFixed(3);
+  status("計測完了");
+  S.history.unshift({
+   date:new Date().toLocaleString("ja-JP"),
+   distance:distance,
+   time:sec
+  });
+  S.history=S.history.slice(0,100);
+  try{
+   localStorage.setItem("sprintHistory",JSON.stringify(S.history));
+  }catch(e){}
+  showHistory();
+ }
+}
+
+function analyze(t){
+ if(video.readyState<2)return;
+
+ const sw=320,sh=180;
+ if(sample.width!==sw){
+  sample.width=sw;
+  sample.height=sh;
+ }
+ sc.drawImage(video,0,0,sw,sh);
+ const data=sc.getImageData(0,0,sw,sh).data;
+ const cy=Math.round(sh*Number($("height").value)/100);
+ const span=Math.max(5,Math.round(sh*.13));
+
+ const metrics=S.lines.map(x=>{
+  const cx=Math.round(x*sw);
+  let changed=0,total=0;
+
+  for(let y=Math.max(0,cy-span);y<Math.min(sh,cy+span);y+=3){
+   for(let xx=Math.max(0,cx-3);xx<=Math.min(sw-1,cx+3);xx+=2){
+    const k=(y*sw+xx)*4;
+    if(S.previous){
+     const diff=(
+      Math.abs(data[k]-S.previous[k])+
+      Math.abs(data[k+1]-S.previous[k+1])+
+      Math.abs(data[k+2]-S.previous[k+2])
+     )/3;
+     if(diff>20)changed++;
+    }
+    total++;
+   }
+  }
+  return total?100*changed/total:0;
+ });
+
+ S.previous=new Uint8ClampedArray(data);
+
+ if(S.state==="calibrate"){
+  if(t>=S.calUntil){
+   S.state="ready";
+   status("緑線の通過待ち");
+  }
+  return;
+ }
+
+ if(!["ready","running"].includes(S.state))return;
+
+ const threshold=Number($("sensitivity").value);
+
+ metrics.forEach((m,i)=>{
+  if(i===0 && S.state!=="ready")return;
+  if(i===1 && S.state!=="running")return;
+
+  if(m>threshold)S.hits[i]++;
+  else S.hits[i]=0;
+
+  if(S.hits[i]>=2 && t-S.lastTrigger[i]>450){
+   S.lastTrigger[i]=t;
+   S.hits[i]=0;
+   trigger(i,t);
+  }
+ });
+}
+
+function loop(t){
+ if(S.camera){
+  if(S.state==="running"){
+   $("timer").textContent=((t-S.start)/1000).toFixed(3);
+  }
+  try{analyze(t);}catch(e){status("映像処理エラー");}
+ }
+ requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+$("camera").onclick=async()=>{
+ try{
+  if(S.stream)S.stream.getTracks().forEach(t=>t.stop());
+  S.stream=await navigator.mediaDevices.getUserMedia({
+   audio:false,
+   video:{
+    facingMode:{ideal:"environment"},
+    width:{ideal:1280},
+    height:{ideal:720},
+    frameRate:{ideal:60}
+   }
+  });
+  video.srcObject=S.stream;
+  await video.play();
+  S.camera=true;
+  reset();
+  resize();
+  status("カメラ起動完了");
+ }catch(e){
+  status("カメラ許可・HTTPSを確認");
+ }
+};
+
+$("arm").onclick=arm;
+$("reset").onclick=reset;
+$("clear").onclick=()=>{
+ if(confirm("履歴を消去しますか？")){
+  S.history=[];
+  localStorage.removeItem("sprintHistory");
+  showHistory();
+ }
+};
+
+$("height").oninput=draw;
+
+function position(e){
+ const r=canvas.getBoundingClientRect();
+ return (e.clientX-r.left)/r.width;
+}
+
+canvas.addEventListener("pointerdown",e=>{
+ const x=position(e);
+ S.drag=Math.abs(x-S.lines[0])<=Math.abs(x-S.lines[1])?0:1;
+ canvas.setPointerCapture(e.pointerId);
+});
+
+canvas.addEventListener("pointermove",e=>{
+ if(S.drag<0)return;
+ const i=S.drag;
+ const x=position(e);
+ const min=i===0?.04:S.lines[0]+.06;
+ const max=i===0?S.lines[1]-.06:.96;
+ S.lines[i]=Math.max(min,Math.min(max,x));
+ draw();
+});
+
+canvas.addEventListener("pointerup",()=>S.drag=-1);
+canvas.addEventListener("pointercancel",()=>S.drag=-1);
+window.addEventListener("resize",resize);
+resize();
+})();
+</script>
+</body>
+</html>

@@ -3,425 +3,332 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport"
- content="width=device-width,initial-scale=1,maximum-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
 <title>短距離タイマー</title>
 <style>
-* { box-sizing: border-box; }
-body {
-  margin: 0;
-  background: #10141c;
-  color: white;
-  font-family: sans-serif;
+*{box-sizing:border-box}
+body{
+ margin:0;background:#111827;color:white;
+ font-family:-apple-system,sans-serif;
 }
-header, footer {
-  background: #202938;
-  padding: 8px;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
+.toolbar{
+ display:flex;align-items:center;gap:8px;
+ padding:9px;flex-wrap:wrap;background:#202b3d;
 }
-button {
-  background: #287deb;
-  color: white;
-  border: none;
-  border-radius: 8px;
-  padding: 10px;
-  font-size: 15px;
+button{
+ background:#2678e9;border:0;color:white;
+ border-radius:8px;padding:10px;font-size:15px;
 }
-input {
-  width: 65px;
-  padding: 6px;
-  font-size: 16px;
+input{
+ width:66px;padding:7px;border-radius:6px;
+ border:0;font-size:16px;
 }
-#stage {
-  position: relative;
-  height: 65vh;
-  min-height: 180px;
-  background: black;
-  overflow: hidden;
-  touch-action: none;
+.stage{
+ position:relative;width:100%;
+ height:calc(100dvh - 110px);
+ min-height:230px;background:#090d13;
+ overflow:hidden;
 }
-video, canvas {
-  position: absolute;
-  width: 100%;
-  height: 100%;
-  object-fit: fill;
+video,canvas{
+ position:absolute;width:100%;height:100%;
+ inset:0;
 }
-#overlay { pointer-events: none; }
-#result {
-  font-size: 26px;
-  color: #ffdd70;
-  font-weight: bold;
+video{object-fit:contain}
+canvas{touch-action:none}
+.readout{
+ position:absolute;top:12px;left:50%;
+ transform:translateX(-50%);
+ padding:8px 22px;
+ background:rgba(0,0,0,.73);
+ border-radius:12px;text-align:center;
+ pointer-events:none;min-width:180px;
 }
-#status { font-size: 14px; }
-small { color: #ddd; }
+.time{
+ font-size:clamp(34px,7vw,66px);
+ font-weight:800;
+ font-variant-numeric:tabular-nums;
+}
+.status{font-size:13px;color:#d1d5db}
+.hint{font-size:12px;padding:5px 10px;color:#cbd5e1}
 </style>
 </head>
-
 <body>
-<header>
-  <button id="camera">カメラ開始</button>
-  <button id="arm">測定準備</button>
-  <button id="reset">リセット</button>
 
-  <label>距離
-    <input id="distance" type="number"
-      value="30" min="0.1" step="0.1">m
-  </label>
-
-  <label>読み上げ
-    <input id="delay" type="number"
-      value="3" min="0" max="60" step="0.5">秒後
-  </label>
-
-  <span id="status">カメラ未開始</span>
-</header>
-
-<div id="stage">
-  <video id="video" autoplay muted playsinline></video>
-  <canvas id="overlay"></canvas>
+<div class="toolbar">
+ <button id="camera">カメラ開始</button>
+ <button id="arm">測定準備・音声ON</button>
+ <button id="reset">リセット</button>
+ <label>距離
+  <input id="distance" type="number" value="30" min="1">m
+ </label>
+ <label>読み上げ
+  <input id="delay" type="number" value="3" min="0" step="0.5">秒後
+ </label>
 </div>
 
-<footer>
-  <span id="result">--.-- 秒</span>
-  <small>
-    赤線＝スタート / 緑線＝ゴール。
-    線は指で左右に動かせます。
-  </small>
-</footer>
+<div class="stage" id="stage">
+ <video id="video" autoplay muted playsinline></video>
+ <canvas id="overlay"></canvas>
+ <div class="readout">
+  <div id="time" class="time">0.00</div>
+  <div id="status" class="status">カメラを開始してください</div>
+ </div>
+</div>
+
+<div class="hint">
+ 線を左右にドラッグして位置調整。
+ 選手は左から右へ走ります。
+ 測定前に「測定準備・音声ON」を押してください。
+</div>
 
 <script>
-const video = document.getElementById("video");
-const stage = document.getElementById("stage");
-const canvas = document.getElementById("overlay");
-const ctx = canvas.getContext("2d");
-const statusEl = document.getElementById("status");
-const result = document.getElementById("result");
+const video=document.getElementById('video');
+const canvas=document.getElementById('overlay');
+const ctx=canvas.getContext('2d');
+const stage=document.getElementById('stage');
+const timeEl=document.getElementById('time');
+const statusEl=document.getElementById('status');
 
-let stream = null;
-let audio = null;
-let armed = false;
-let phase = 0;
-let startTime = 0;
-let previous = null;
-let hitStart = 0;
-let hitGoal = 0;
-let announceTimer = null;
-let running = false;
+let startX=.27;
+let goalX=.77;
+let drag=null;
+let armed=false;
+let running=false;
+let finished=false;
+let startAt=0;
+let elapsed=0;
+let raf=0;
+let readTimer=null;
+let audio=null;
+let stream=null;
 
-let lines = [0.28, 0.72];
-let drag = -1;
+const setStatus=s=>statusEl.textContent=s;
 
-const W = 320;
-const H = 180;
-const off = document.createElement("canvas");
-off.width = W;
-off.height = H;
-const oc = off.getContext("2d", {
-  willReadFrequently: true
-});
-
-function setStatus(text) {
-  statusEl.textContent = text;
+function resize(){
+ canvas.width=stage.clientWidth*devicePixelRatio;
+ canvas.height=stage.clientHeight*devicePixelRatio;
+ ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
 }
-
-// 通過時の電子音
-function beep(freq = 950) {
-  if (!audio) return;
-
-  const o = audio.createOscillator();
-  const g = audio.createGain();
-
-  o.type = "sine";
-  o.frequency.value = freq;
-
-  g.gain.setValueAtTime(
-    0.001, audio.currentTime
-  );
-  g.gain.exponentialRampToValueAtTime(
-    0.25, audio.currentTime + 0.01
-  );
-  g.gain.exponentialRampToValueAtTime(
-    0.001, audio.currentTime + 0.15
-  );
-
-  o.connect(g);
-  g.connect(audio.destination);
-  o.start();
-  o.stop(audio.currentTime + 0.16);
-}
-
-// 測定タイムを日本語で読み上げる
-function speak(seconds) {
-  if (!("speechSynthesis" in window)) return;
-
-  const parts = seconds.toFixed(2).split(".");
-  const message = parts[0] + "秒" + parts[1];
-
-  const utterance =
-    new SpeechSynthesisUtterance(message);
-
-  utterance.lang = "ja-JP";
-  utterance.rate = 0.9;
-  utterance.volume = 1;
-
-  speechSynthesis.cancel();
-  speechSynthesis.speak(utterance);
-}
-
-// 画面サイズ
-function resize() {
-  canvas.width = stage.clientWidth *
-    devicePixelRatio;
-  canvas.height = stage.clientHeight *
-    devicePixelRatio;
-}
-window.addEventListener("resize", resize);
+addEventListener('resize',resize);
 resize();
 
-// 2本の線を表示
-function draw() {
-  const w = canvas.width;
-  const h = canvas.height;
-
-  ctx.clearRect(0, 0, w, h);
-
-  lines.forEach((x, i) => {
-    const px = x * w;
-
-    ctx.strokeStyle =
-      i === 0 ? "#ff4444" : "#33ff77";
-    ctx.lineWidth = 4 * devicePixelRatio;
-
-    ctx.beginPath();
-    ctx.moveTo(px, 0);
-    ctx.lineTo(px, h);
-    ctx.stroke();
-
-    ctx.fillStyle = ctx.strokeStyle;
-    ctx.font =
-      (15 * devicePixelRatio) + "px sans-serif";
-
-    ctx.fillText(
-      i === 0 ? "スタート" : "ゴール",
-      px + 5,
-      25 * devicePixelRatio
-    );
-  });
-
-  requestAnimationFrame(draw);
+function tone(freq=950){
+ try{
+  audio=audio||new(window.AudioContext||window.webkitAudioContext)();
+  if(audio.state==='suspended')audio.resume();
+  const o=audio.createOscillator();
+  const g=audio.createGain();
+  const t=audio.currentTime;
+  o.frequency.value=freq;
+  g.gain.setValueAtTime(.12,t);
+  g.gain.exponentialRampToValueAtTime(.001,t+.12);
+  o.connect(g);
+  g.connect(audio.destination);
+  o.start(t);
+  o.stop(t+.13);
+ }catch(e){console.warn(e)}
 }
-draw();
 
-// 線を指で移動
-stage.addEventListener("pointerdown", e => {
-  const rect = stage.getBoundingClientRect();
-  const x = (e.clientX - rect.left) / rect.width;
-
-  drag = Math.abs(lines[0] - x) <
-    Math.abs(lines[1] - x) ? 0 : 1;
-
-  stage.setPointerCapture(e.pointerId);
-});
-
-stage.addEventListener("pointermove", e => {
-  if (drag < 0) return;
-
-  const rect = stage.getBoundingClientRect();
-  const x = (e.clientX - rect.left) / rect.width;
-
-  lines[drag] = Math.max(
-    0.04, Math.min(0.96, x)
-  );
-  previous = null;
-});
-
-stage.addEventListener("pointerup", () => {
-  drag = -1;
-});
-stage.addEventListener("pointercancel", () => {
-  drag = -1;
-});
-
-// カメラ開始
-document.getElementById("camera").onclick =
-async () => {
-  try {
-    if (stream) {
-      stream.getTracks().forEach(t => t.stop());
-    }
-
-    stream = await navigator.mediaDevices
-      .getUserMedia({
-        audio: false,
-        video: {
-          facingMode: { ideal: "environment" },
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
-          frameRate: { ideal: 60 }
-        }
-      });
-
-    video.srcObject = stream;
-    await video.play();
-
-    setStatus("カメラ起動・測定準備を押す");
-    previous = null;
-
-    if (!running) {
-      running = true;
-      requestAnimationFrame(detect);
-    }
-  } catch (e) {
-    setStatus("カメラの許可を確認してください");
-  }
-};
-
-// 測定準備
-document.getElementById("arm").onclick =
-async () => {
-  audio = audio || new (
-    window.AudioContext ||
-    window.webkitAudioContext
-  )();
-
-  await audio.resume();
-
-  if ("speechSynthesis" in window) {
-    speechSynthesis.cancel();
-    const u =
-      new SpeechSynthesisUtterance("準備完了");
-    u.lang = "ja-JP";
-    speechSynthesis.speak(u);
-  }
-
-  clearTimeout(announceTimer);
-
-  phase = 0;
-  armed = true;
-  previous = null;
-  hitStart = 0;
-  hitGoal = 0;
-
-  result.textContent = "--.-- 秒";
-  setStatus("スタート待機中");
-};
-
-// リセット
-document.getElementById("reset").onclick =
-() => {
-  armed = false;
-  phase = 0;
-  previous = null;
-  clearTimeout(announceTimer);
+function prepareAudio(){
+ try{
+  audio=audio||new(window.AudioContext||window.webkitAudioContext)();
+  audio.resume();
+  tone(700);
+ }catch(e){}
+ try{
   speechSynthesis.cancel();
-
-  result.textContent = "--.-- 秒";
-  setStatus("リセットしました");
-};
-
-// 線付近の映像変化を検知
-function stripMotion(curr, prev, x) {
-  const xx = Math.max(
-    3, Math.min(W - 4, Math.round(x * W))
-  );
-
-  let changed = 0;
-  let total = 0;
-
-  for (let y = 25; y < H - 15; y += 3) {
-    for (let dx = -3; dx <= 3; dx += 2) {
-      const p = (y * W + xx + dx) * 4;
-
-      const diff = (
-        Math.abs(curr[p] - prev[p]) +
-        Math.abs(curr[p+1] - prev[p+1]) +
-        Math.abs(curr[p+2] - prev[p+2])
-      ) / 3;
-
-      if (diff > 32) changed++;
-      total++;
-    }
-  }
-
-  return changed / total;
+  const u=new SpeechSynthesisUtterance('音声準備完了');
+  u.lang='ja-JP';
+  u.rate=1;
+  u.volume=1;
+  speechSynthesis.speak(u);
+ }catch(e){
+  setStatus('音声を許可してください');
+ }
 }
 
-// 自動計測
-function detect() {
-  if (video.readyState >= 2) {
-    oc.drawImage(video, 0, 0, W, H);
-    const data =
-      oc.getImageData(0, 0, W, H).data;
+function speakResult(sec){
+ const words='タイムは、'+sec.toFixed(2).replace('.','てん')+'秒です';
+ try{
+  speechSynthesis.cancel();
+  const u=new SpeechSynthesisUtterance(words);
+  u.lang='ja-JP';
+  u.rate=.9;
+  u.volume=1;
+  u.onerror=()=>{
+   setStatus('音声が再生できません。音量を確認してください');
+  };
+  speechSynthesis.speak(u);
+ }catch(e){
+  setStatus('読み上げに失敗しました');
+ }
+}
 
-    if (previous && armed &&
-        lines[0] < lines[1]) {
+function reset(){
+ clearTimeout(readTimer);
+ armed=false;
+ running=false;
+ finished=false;
+ elapsed=0;
+ previous=null;
+ prevStart=0;
+ prevGoal=0;
+ timeEl.textContent='0.00';
+ setStatus('測定準備を押してください');
+}
 
-      const s = stripMotion(
-        data, previous, lines[0]
-      );
-      const g = stripMotion(
-        data, previous, lines[1]
-      );
+document.getElementById('reset').onclick=reset;
 
-      // スタート線通過
-      if (phase === 0) {
-        hitStart = s > 0.14 ?
-          hitStart + 1 : 0;
+document.getElementById('camera').onclick=async()=>{
+ try{
+  if(stream)stream.getTracks().forEach(t=>t.stop());
+  stream=await navigator.mediaDevices.getUserMedia({
+   audio:false,
+   video:{
+    facingMode:'environment',
+    width:{ideal:1280},
+    height:{ideal:720},
+    frameRate:{ideal:60}
+   }
+  });
+  video.srcObject=stream;
+  await video.play();
+  setStatus('カメラ起動完了');
+  cancelAnimationFrame(raf);
+  loop();
+ }catch(e){
+  setStatus('カメラを許可し、HTTPSで開いてください');
+ }
+};
 
-        if (hitStart >= 2) {
-          phase = 1;
-          startTime = performance.now();
+document.getElementById('arm').onclick=()=>{
+ reset();
+ armed=true;
+ prepareAudio();
+ setStatus('待機中：赤線の通過を検知します');
+};
 
-          beep(950);
-          setStatus("計測中...");
-          hitGoal = 0;
-        }
-      }
+canvas.addEventListener('pointerdown',e=>{
+ const r=canvas.getBoundingClientRect();
+ const x=(e.clientX-r.left)/r.width;
+ drag=Math.abs(x-startX)<Math.abs(x-goalX)?'start':'goal';
+ canvas.setPointerCapture(e.pointerId);
+});
 
-      // ゴール線通過
-      else if (phase === 1) {
-        hitGoal = g > 0.14 ?
-          hitGoal + 1 : 0;
+canvas.addEventListener('pointermove',e=>{
+ if(!drag)return;
+ const r=canvas.getBoundingClientRect();
+ const x=Math.max(.03,Math.min(.97,(e.clientX-r.left)/r.width));
+ if(drag==='start')startX=Math.min(x,goalX-.05);
+ else goalX=Math.max(x,startX+.05);
+});
 
-        if (hitGoal >= 2) {
-          const elapsed =
-            (performance.now() - startTime) / 1000;
+canvas.addEventListener('pointerup',()=>drag=null);
+canvas.addEventListener('pointercancel',()=>drag=null);
 
-          phase = 2;
-          armed = false;
+const work=document.createElement('canvas');
+work.width=160;
+work.height=90;
+const wctx=work.getContext('2d',{willReadFrequently:true});
+let previous=null;
+let prevStart=0;
+let prevGoal=0;
+let lastTrigger=0;
 
-          beep(1250);
+function motion(){
+ if(video.readyState<2)return;
+ wctx.drawImage(video,0,0,160,90);
+ let data;
+ try{
+  data=wctx.getImageData(0,0,160,90).data;
+ }catch(e){return}
 
-          result.textContent =
-            elapsed.toFixed(2) + " 秒";
+ if(!previous){
+  previous=new Uint8ClampedArray(data);
+  return;
+ }
 
-          setStatus("測定完了");
+ const scores=[0,0];
+ const lines=[startX,goalX];
 
-          // ゴール3秒後に読み上げ
-          const delay = Math.max(
-            0,
-            Math.min(
-              60,
-              Number(
-                document.getElementById("delay").value
-              ) || 0
-            )
-          );
-
-          announceTimer = setTimeout(() => {
-            speak(elapsed);
-          }, delay * 1000);
-        }
-      }
-    }
-
-    previous = new Uint8ClampedArray(data);
+ for(let k=0;k<2;k++){
+  let cx=Math.round(lines[k]*159);
+  let sum=0,n=0;
+  for(let y=16;y<85;y+=3){
+   for(let x=Math.max(1,cx-2);x<=Math.min(158,cx+2);x+=2){
+    const i=(y*160+x)*4;
+    sum+=(
+     Math.abs(data[i]-previous[i])+
+     Math.abs(data[i+1]-previous[i+1])+
+     Math.abs(data[i+2]-previous[i+2])
+    )/3;
+    n++;
+   }
   }
+  scores[k]=sum/Math.max(1,n);
+ }
 
-  requestAnimationFrame(detect);
+ previous=new Uint8ClampedArray(data);
+ const now=performance.now();
+ const threshold=24;
+
+ if(armed&&!running&&!finished&&
+    scores[0]>threshold&&prevStart<=threshold&&
+    now-lastTrigger>500){
+  running=true;
+  startAt=now;
+  lastTrigger=now;
+  tone();
+  setStatus('計測中');
+ }
+ else if(running&&scores[1]>threshold&&
+         prevGoal<=threshold&&now-startAt>250){
+  elapsed=(now-startAt)/1000;
+  running=false;
+  finished=true;
+  armed=false;
+  tone(1100);
+  timeEl.textContent=elapsed.toFixed(2);
+  setStatus('ゴール！ 読み上げ待機中');
+
+  const wait=Math.max(
+   0,Number(document.getElementById('delay').value)||0
+  )*1000;
+
+  readTimer=setTimeout(()=>{
+   setStatus('測定完了');
+   speakResult(elapsed);
+  },wait);
+ }
+ prevStart=scores[0];
+ prevGoal=scores[1];
+}
+
+function loop(){
+ const w=stage.clientWidth;
+ const h=stage.clientHeight;
+ ctx.clearRect(0,0,w,h);
+ motion();
+
+ if(running){
+  timeEl.textContent=((performance.now()-startAt)/1000).toFixed(2);
+ }
+
+ for(const [x,color,name] of [
+  [startX,'#ff3c4d','スタート'],
+  [goalX,'#00ff8a','ゴール']
+ ]){
+  ctx.strokeStyle=color;
+  ctx.lineWidth=4;
+  ctx.beginPath();
+  ctx.moveTo(x*w,0);
+  ctx.lineTo(x*w,h);
+  ctx.stroke();
+  ctx.font='18px sans-serif';
+  ctx.fillStyle=color;
+  ctx.fillText(name,Math.min(w-95,x*w+7),28);
+ }
+ raf=requestAnimationFrame(loop);
 }
 </script>
 </body>

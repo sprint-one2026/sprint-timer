@@ -1,335 +1,286 @@
 
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ja">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
-<title>短距離タイマー</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
+<title>短距離2線タイマー</title>
 <style>
 *{box-sizing:border-box}
-body{
- margin:0;background:#111827;color:white;
- font-family:-apple-system,sans-serif;
-}
-.toolbar{
- display:flex;align-items:center;gap:8px;
- padding:9px;flex-wrap:wrap;background:#202b3d;
-}
-button{
- background:#2678e9;border:0;color:white;
- border-radius:8px;padding:10px;font-size:15px;
-}
-input{
- width:66px;padding:7px;border-radius:6px;
- border:0;font-size:16px;
-}
-.stage{
- position:relative;width:100%;
- height:calc(100dvh - 110px);
- min-height:230px;background:#090d13;
- overflow:hidden;
-}
-video,canvas{
- position:absolute;width:100%;height:100%;
- inset:0;
-}
-video{object-fit:contain}
+body{margin:0;background:#101722;color:white;font-family:-apple-system,BlinkMacSystemFont,sans-serif}
+header{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 12px}
+h1{font-size:17px;margin:0}
+.status{font-size:12px;color:#b9c9d9}
+.app{display:flex;flex-direction:column;gap:7px;padding:8px;max-width:1200px;margin:auto}
+.viewer{position:relative;background:#000;border:1px solid #526274;border-radius:10px;overflow:hidden;min-height:170px;flex:1}
+video,canvas{position:absolute;width:100%;height:100%;inset:0;object-fit:fill}
+video{object-fit:cover}
 canvas{touch-action:none}
-.readout{
- position:absolute;top:12px;left:50%;
- transform:translateX(-50%);
- padding:8px 22px;
- background:rgba(0,0,0,.73);
- border-radius:12px;text-align:center;
- pointer-events:none;min-width:180px;
+.timer{position:absolute;top:8px;left:50%;transform:translateX(-50%);min-width:175px;text-align:center;background:#0a1220e8;border:2px solid #58baff;border-radius:10px;padding:4px 12px;pointer-events:none}
+.timer strong{display:block;font-size:clamp(24px,5vw,44px);font-variant-numeric:tabular-nums}
+.timer small{font-size:11px;color:#cbd7e7}
+.panel{display:flex;gap:8px;align-items:center;justify-content:center;flex-wrap:wrap}
+button{border:0;border-radius:8px;background:#2d80d7;color:white;padding:11px 14px;font-size:15px;font-weight:600}
+button.secondary{background:#40516a}
+button:disabled{opacity:.5}
+label{font-size:13px}
+input[type=range]{vertical-align:middle;width:110px}
+.note{font-size:12px;color:#bac9d7;text-align:center}
+.camera{width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}
+@media(orientation:landscape){
+.app{height:calc(100dvh - 38px);padding:4px 8px;gap:5px}
+.viewer{min-height:0}
+.panel button{padding:7px 12px}
+header{padding:5px 10px}
+.note{font-size:11px}
 }
-.time{
- font-size:clamp(34px,7vw,66px);
- font-weight:800;
- font-variant-numeric:tabular-nums;
+@media(orientation:portrait){
+.viewer{height:53dvh;flex:none}
+.panel{padding:6px}
 }
-.status{font-size:13px;color:#d1d5db}
-.hint{font-size:12px;padding:5px 10px;color:#cbd5e1}
 </style>
 </head>
 <body>
-
-<div class="toolbar">
- <button id="camera">カメラ開始</button>
- <button id="arm">測定準備・音声ON</button>
- <button id="reset">リセット</button>
- <label>距離
-  <input id="distance" type="number" value="30" min="1">m
- </label>
- <label>読み上げ
-  <input id="delay" type="number" value="3" min="0" step="0.5">秒後
- </label>
+<header>
+<h1>短距離2線タイマー</h1>
+<span id="status" class="status">カメラ未起動</span>
+</header>
+<main class="app">
+<div id="viewer" class="viewer">
+<video id="video" autoplay muted playsinline></video>
+<canvas id="stage"></canvas>
+<div class="timer">
+<small id="phase">準備中</small>
+<strong id="time">0.00</strong>
+<small>秒</small>
 </div>
-
-<div class="stage" id="stage">
- <video id="video" autoplay muted playsinline></video>
- <canvas id="overlay"></canvas>
- <div class="readout">
-  <div id="time" class="time">0.00</div>
-  <div id="status" class="status">カメラを開始してください</div>
- </div>
 </div>
-
-<div class="hint">
- 線を左右にドラッグして位置調整。
- 選手は左から右へ走ります。
- 測定前に「測定準備・音声ON」を押してください。
+<div class="panel">
+<button id="cameraBtn">カメラ開始</button>
+<button id="armBtn" disabled>計測準備</button>
+<button id="resetBtn" class="secondary">リセット</button>
+<button id="switchBtn" class="secondary">カメラ切替</button>
+<label>感度
+<input id="sensitivity" type="range" min="10" max="100" value="42">
+<span id="senseVal">42</span>
+</label>
 </div>
-
+<div class="note">黄色の線＝スタート／水色の線＝ゴール。線を指で左右に動かせます。横向きで使用してください。</div>
+</main>
 <script>
-const video=document.getElementById('video');
-const canvas=document.getElementById('overlay');
-const ctx=canvas.getContext('2d');
-const stage=document.getElementById('stage');
-const timeEl=document.getElementById('time');
-const statusEl=document.getElementById('status');
-
-let startX=.27;
-let goalX=.77;
-let drag=null;
-let armed=false;
-let running=false;
-let finished=false;
-let startAt=0;
-let elapsed=0;
-let raf=0;
-let readTimer=null;
-let audio=null;
-let stream=null;
-
-const setStatus=s=>statusEl.textContent=s;
-
-function resize(){
- canvas.width=stage.clientWidth*devicePixelRatio;
- canvas.height=stage.clientHeight*devicePixelRatio;
- ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
+'use strict';
+const video=document.getElementById('video'),stage=document.getElementById('stage'),ctx=stage.getContext('2d');
+const viewer=document.getElementById('viewer'),timeEl=document.getElementById('time'),phaseEl=document.getElementById('phase'),statusEl=document.getElementById('status');
+const cameraBtn=document.getElementById('cameraBtn'),armBtn=document.getElementById('armBtn'),resetBtn=document.getElementById('resetBtn'),switchBtn=document.getElementById('switchBtn');
+const sensitivity=document.getElementById('sensitivity'),senseVal=document.getElementById('senseVal');
+let stream=null,facing='environment',audioCtx=null,mode='idle',startAt=0,elapsed=0,finishTimer=null;
+let startX=.30,goalX=.72,dragging=null,previous=null,prevAt=0,baselineStart=0,baselineGoal=0,lastStartHit=0,lastGoalHit=0;
+const sample=document.createElement('canvas');
+sample.width=160;
+sample.height=90;
+const sctx=sample.getContext('2d',{willReadFrequently:true});
+function status(s){statusEl.textContent=s}
+function phase(s){phaseEl.textContent=s}
+function sound(){
+try{
+audioCtx=audioCtx||new(window.AudioContext||window.webkitAudioContext)();
+audioCtx.resume();
+const osc=audioCtx.createOscillator(),gain=audioCtx.createGain();
+osc.type='sine';
+osc.frequency.value=880;
+gain.gain.value=.08;
+osc.connect(gain);
+gain.connect(audioCtx.destination);
+const t=audioCtx.currentTime;
+osc.start(t);
+gain.gain.exponentialRampToValueAtTime(.001,t+.09);
+osc.stop(t+.10)
+}catch(e){}
 }
-addEventListener('resize',resize);
-resize();
-
-function tone(freq=950){
- try{
-  audio=audio||new(window.AudioContext||window.webkitAudioContext)();
-  if(audio.state==='suspended')audio.resume();
-  const o=audio.createOscillator();
-  const g=audio.createGain();
-  const t=audio.currentTime;
-  o.frequency.value=freq;
-  g.gain.setValueAtTime(.12,t);
-  g.gain.exponentialRampToValueAtTime(.001,t+.12);
-  o.connect(g);
-  g.connect(audio.destination);
-  o.start(t);
-  o.stop(t+.13);
- }catch(e){console.warn(e)}
+function speak(t){
+if(!('speechSynthesis' in window))return;
+const [whole,decimal]=t.toFixed(2).split('.');
+const digits=['ゼロ','イチ','ニ','サン','ヨン','ゴ','ロク','ナナ','ハチ','キュウ'];
+const decimalSpeech=decimal.split('').map(c=>digits[Number(c)]).join('、');
+const u=new SpeechSynthesisUtterance(whole+'てん、'+decimalSpeech+'びょう');
+u.lang='ja-JP';
+u.rate=.85;
+window.speechSynthesis.cancel();
+window.speechSynthesis.speak(u)
 }
-
-function prepareAudio(){
- try{
-  audio=audio||new(window.AudioContext||window.webkitAudioContext)();
-  audio.resume();
-  tone(700);
- }catch(e){}
- try{
-  speechSynthesis.cancel();
-  const u=new SpeechSynthesisUtterance('音声準備完了');
-  u.lang='ja-JP';
-  u.rate=1;
-  u.volume=1;
-  speechSynthesis.speak(u);
- }catch(e){
-  setStatus('音声を許可してください');
- }
+function clearSpeech(){
+clearTimeout(finishTimer);
+finishTimer=null;
+if('speechSynthesis' in window)window.speechSynthesis.cancel()
 }
-
-function speakResult(sec){
- const words='タイムは、'+sec.toFixed(2).replace('.','てん')+'秒です';
- try{
-  speechSynthesis.cancel();
-  const u=new SpeechSynthesisUtterance(words);
-  u.lang='ja-JP';
-  u.rate=.9;
-  u.volume=1;
-  u.onerror=()=>{
-   setStatus('音声が再生できません。音量を確認してください');
-  };
-  speechSynthesis.speak(u);
- }catch(e){
-  setStatus('読み上げに失敗しました');
- }
-}
-
 function reset(){
- clearTimeout(readTimer);
- armed=false;
- running=false;
- finished=false;
- elapsed=0;
- previous=null;
- prevStart=0;
- prevGoal=0;
- timeEl.textContent='0.00';
- setStatus('測定準備を押してください');
+clearSpeech();
+mode='idle';
+elapsed=0;
+timeEl.textContent='0.00';
+phase('準備中');
+baselineStart=0;
+baselineGoal=0;
+previous=null;
+armBtn.textContent='計測準備';
+status(stream?'カメラ起動中':'カメラ未起動')
 }
-
-document.getElementById('reset').onclick=reset;
-
-document.getElementById('camera').onclick=async()=>{
- try{
-  if(stream)stream.getTracks().forEach(t=>t.stop());
-  stream=await navigator.mediaDevices.getUserMedia({
-   audio:false,
-   video:{
-    facingMode:'environment',
-    width:{ideal:1280},
-    height:{ideal:720},
-    frameRate:{ideal:60}
-   }
-  });
-  video.srcObject=stream;
-  await video.play();
-  setStatus('カメラ起動完了');
-  cancelAnimationFrame(raf);
-  loop();
- }catch(e){
-  setStatus('カメラを許可し、HTTPSで開いてください');
- }
-};
-
-document.getElementById('arm').onclick=()=>{
- reset();
- armed=true;
- prepareAudio();
- setStatus('待機中：赤線の通過を検知します');
-};
-
-canvas.addEventListener('pointerdown',e=>{
- const r=canvas.getBoundingClientRect();
- const x=(e.clientX-r.left)/r.width;
- drag=Math.abs(x-startX)<Math.abs(x-goalX)?'start':'goal';
- canvas.setPointerCapture(e.pointerId);
+function arm(){
+if(!stream)return;
+clearSpeech();
+mode='armed';
+elapsed=0;
+timeEl.textContent='0.00';
+phase('スタート待機');
+armBtn.textContent='待機中';
+previous=null;
+baselineStart=0;
+baselineGoal=0;
+lastStartHit=performance.now();
+lastGoalHit=performance.now();
+sound();
+status('スタート線の動きを待機')
+}
+function finish(){
+if(mode!=='running')return;
+elapsed=(performance.now()-startAt)/1000;
+mode='finished';
+const shown=elapsed.toFixed(2);
+timeEl.textContent=shown;
+phase('ゴール！');
+armBtn.textContent='再計測';
+sound();
+status('計測終了');
+finishTimer=setTimeout(()=>speak(elapsed),3000)
+}
+async function startCamera(){
+try{
+if(stream)stream.getTracks().forEach(t=>t.stop());
+stream=await navigator.mediaDevices.getUserMedia({
+audio:false,
+video:{
+facingMode:{ideal:facing},
+width:{ideal:1280},
+height:{ideal:720},
+frameRate:{ideal:30}
+}
 });
-
-canvas.addEventListener('pointermove',e=>{
- if(!drag)return;
- const r=canvas.getBoundingClientRect();
- const x=Math.max(.03,Math.min(.97,(e.clientX-r.left)/r.width));
- if(drag==='start')startX=Math.min(x,goalX-.05);
- else goalX=Math.max(x,startX+.05);
+video.srcObject=stream;
+await video.play();
+armBtn.disabled=false;
+reset();
+status('カメラ起動中');
+sound()
+}catch(e){
+status('カメラを起動できません');
+alert('カメラの利用を許可してください。HTTPSのGitHub Pagesで開いてください。\n'+e.message)
+}
+}
+function resize(){
+const r=viewer.getBoundingClientRect(),d=Math.min(devicePixelRatio||1,2);
+stage.width=Math.max(1,Math.round(r.width*d));
+stage.height=Math.max(1,Math.round(r.height*d));
+ctx.setTransform(d,0,0,d,0,0)
+}
+function linePosition(e){
+const r=stage.getBoundingClientRect();
+return Math.max(.05,Math.min(.95,(e.clientX-r.left)/r.width))
+}
+stage.addEventListener('pointerdown',e=>{
+const x=linePosition(e);
+const a=Math.abs(x-startX),b=Math.abs(x-goalX);
+if(Math.min(a,b)>.09)return;
+dragging=a<b?'start':'goal';
+stage.setPointerCapture(e.pointerId);
+e.preventDefault()
 });
-
-canvas.addEventListener('pointerup',()=>drag=null);
-canvas.addEventListener('pointercancel',()=>drag=null);
-
-const work=document.createElement('canvas');
-work.width=160;
-work.height=90;
-const wctx=work.getContext('2d',{willReadFrequently:true});
-let previous=null;
-let prevStart=0;
-let prevGoal=0;
-let lastTrigger=0;
-
-function motion(){
- if(video.readyState<2)return;
- wctx.drawImage(video,0,0,160,90);
- let data;
- try{
-  data=wctx.getImageData(0,0,160,90).data;
- }catch(e){return}
-
- if(!previous){
-  previous=new Uint8ClampedArray(data);
-  return;
- }
-
- const scores=[0,0];
- const lines=[startX,goalX];
-
- for(let k=0;k<2;k++){
-  let cx=Math.round(lines[k]*159);
-  let sum=0,n=0;
-  for(let y=16;y<85;y+=3){
-   for(let x=Math.max(1,cx-2);x<=Math.min(158,cx+2);x+=2){
-    const i=(y*160+x)*4;
-    sum+=(
-     Math.abs(data[i]-previous[i])+
-     Math.abs(data[i+1]-previous[i+1])+
-     Math.abs(data[i+2]-previous[i+2])
-    )/3;
-    n++;
-   }
-  }
-  scores[k]=sum/Math.max(1,n);
- }
-
- previous=new Uint8ClampedArray(data);
- const now=performance.now();
- const threshold=24;
-
- if(armed&&!running&&!finished&&
-    scores[0]>threshold&&prevStart<=threshold&&
-    now-lastTrigger>500){
-  running=true;
-  startAt=now;
-  lastTrigger=now;
-  tone();
-  setStatus('計測中');
- }
- else if(running&&scores[1]>threshold&&
-         prevGoal<=threshold&&now-startAt>250){
-  elapsed=(now-startAt)/1000;
-  running=false;
-  finished=true;
-  armed=false;
-  tone(1100);
-  timeEl.textContent=elapsed.toFixed(2);
-  setStatus('ゴール！ 読み上げ待機中');
-
-  const wait=Math.max(
-   0,Number(document.getElementById('delay').value)||0
-  )*1000;
-
-  readTimer=setTimeout(()=>{
-   setStatus('測定完了');
-   speakResult(elapsed);
-  },wait);
- }
- prevStart=scores[0];
- prevGoal=scores[1];
+stage.addEventListener('pointermove',e=>{
+if(!dragging)return;
+const x=linePosition(e);
+if(dragging==='start')startX=Math.min(x,goalX-.08);
+else goalX=Math.max(x,startX+.08);
+previous=null;
+e.preventDefault()
+});
+for(const ev of ['pointerup','pointercancel'])
+stage.addEventListener(ev,()=>dragging=null);
+function activity(current,prior,x){
+const width=sample.width,height=sample.height,cx=Math.round(x*width),band=3;
+let total=0,count=0;
+for(let yy=8;yy<height-8;yy+=3){
+for(let xx=Math.max(0,cx-band);xx<=Math.min(width-1,cx+band);xx+=2){
+const i=(yy*width+xx)*4;
+const diff=(Math.abs(current[i]-prior[i])+Math.abs(current[i+1]-prior[i+1])+Math.abs(current[i+2]-prior[i+2]))/3;
+total+=diff;
+count++
 }
-
-function loop(){
- const w=stage.clientWidth;
- const h=stage.clientHeight;
- ctx.clearRect(0,0,w,h);
- motion();
-
- if(running){
-  timeEl.textContent=((performance.now()-startAt)/1000).toFixed(2);
- }
-
- for(const [x,color,name] of [
-  [startX,'#ff3c4d','スタート'],
-  [goalX,'#00ff8a','ゴール']
- ]){
-  ctx.strokeStyle=color;
-  ctx.lineWidth=4;
-  ctx.beginPath();
-  ctx.moveTo(x*w,0);
-  ctx.lineTo(x*w,h);
-  ctx.stroke();
-  ctx.font='18px sans-serif';
-  ctx.fillStyle=color;
-  ctx.fillText(name,Math.min(w-95,x*w+7),28);
- }
- raf=requestAnimationFrame(loop);
 }
+return count?total/count:0
+}
+function detect(now){
+if(!stream||video.readyState<2||dragging)return;
+if(now-prevAt<65)return;
+prevAt=now;
+try{
+sctx.drawImage(video,0,0,sample.width,sample.height);
+const frame=sctx.getImageData(0,0,sample.width,sample.height).data;
+if(previous){
+const a=activity(frame,previous,startX),b=activity(frame,previous,goalX);
+const threshold=26-Number(sensitivity.value)*.19;
+baselineStart=baselineStart*.92+a*.08;
+baselineGoal=baselineGoal*.92+b*.08;
+const startHit=a>threshold&&a>baselineStart*1.65;
+const goalHit=b>threshold&&b>baselineGoal*1.65;
+if(mode==='armed'&&startHit&&now-lastStartHit>500){
+mode='running';
+startAt=performance.now();
+phase('計測中');
+status('ゴール待機');
+sound();
+lastStartHit=now;
+lastGoalHit=now
+}else if(mode==='running'&&goalHit&&now-lastGoalHit>250&&now-startAt>300){
+finish();
+lastGoalHit=now
+}
+}
+previous=new Uint8ClampedArray(frame)
+}catch(e){}
+}
+function draw(now){
+const w=viewer.clientWidth,h=viewer.clientHeight;
+ctx.clearRect(0,0,w,h);
+if(mode==='running')timeEl.textContent=((performance.now()-startAt)/1000).toFixed(2);
+for(const [x,color,name] of [[startX,'#ffd34d','スタート'],[goalX,'#42d9ff','ゴール']]){
+ctx.strokeStyle=color;
+ctx.lineWidth=4;
+ctx.beginPath();
+ctx.moveTo(x*w,0);
+ctx.lineTo(x*w,h);
+ctx.stroke();
+ctx.font='bold 15px sans-serif';
+const textW=ctx.measureText(name).width+18;
+const tx=Math.min(w-textW,Math.max(0,x*w-textW/2));
+ctx.fillStyle='#101722cc';
+ctx.fillRect(tx,h-35,textW,27);
+ctx.fillStyle=color;
+ctx.fillText(name,tx+9,h-16)
+}
+detect(now);
+requestAnimationFrame(draw)
+}
+cameraBtn.addEventListener('click',startCamera);
+armBtn.addEventListener('click',arm);
+resetBtn.addEventListener('click',reset);
+switchBtn.addEventListener('click',()=>{
+facing=facing==='environment'?'user':'environment';
+startCamera()
+});
+sensitivity.addEventListener('input',()=>senseVal.textContent=sensitivity.value);
+window.addEventListener('resize',resize);
+new ResizeObserver(resize).observe(viewer);
+resize();
+requestAnimationFrame(draw);
 </script>
 </body>
 </html>

@@ -3,402 +3,733 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
+<meta name="viewport"
+ content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
 <title>短距離2線タイマー</title>
 <style>
 *{box-sizing:border-box}
 html{min-height:100%;overflow-y:auto}
-body{margin:0;background:#101722;color:#fff;font-family:-apple-system,BlinkMacSystemFont,sans-serif;min-height:100%;overflow-x:hidden}
-header{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 12px}
-h1{font-size:17px;margin:0}.status{font-size:12px;color:#b9c9d9}
-.app{display:flex;flex-direction:column;gap:7px;padding:8px;max-width:1200px;margin:auto}
-.viewer{position:relative;background:#000;border:1px solid #526274;border-radius:10px;overflow:hidden;min-height:170px;flex:1}
-video,canvas{position:absolute;width:100%;height:100%;inset:0;object-fit:fill}
-video{object-fit:cover}canvas{touch-action:none}
-.timer{position:absolute;top:8px;left:50%;transform:translateX(-50%);min-width:175px;text-align:center;background:#0a1220e8;border:2px solid #58baff;border-radius:10px;padding:4px 12px;pointer-events:none}
-.timer strong{display:block;font-size:clamp(24px,5vw,44px);font-variant-numeric:tabular-nums}
-.timer small{font-size:11px;color:#cbd7e7}
-.panel{display:flex;gap:8px;align-items:center;justify-content:center;flex-wrap:wrap}
-button{border:0;border-radius:8px;background:#2d80d7;color:white;padding:11px 14px;font-size:15px;font-weight:600}
+body{
+ margin:0;
+ background:#101722;
+ color:white;
+ font-family:-apple-system,BlinkMacSystemFont,sans-serif;
+ min-height:100%;
+ overflow-x:hidden
+}
+header{
+ display:flex;
+ align-items:center;
+ justify-content:space-between;
+ gap:8px;
+ padding:8px 12px
+}
+h1{font-size:17px;margin:0}
+.status{font-size:12px;color:#b9c9d9}
+.app{
+ display:flex;
+ flex-direction:column;
+ gap:7px;
+ padding:8px;
+ max-width:1200px;
+ margin:auto
+}
+.viewer{
+ position:relative;
+ background:#000;
+ border:1px solid #526274;
+ border-radius:10px;
+ overflow:hidden;
+ min-height:170px;
+ flex:1
+}
+video,canvas{
+ position:absolute;
+ width:100%;
+ height:100%;
+ inset:0;
+ object-fit:fill
+}
+video{object-fit:cover}
+canvas{touch-action:none}
+.timer{
+ position:absolute;
+ top:8px;
+ left:50%;
+ transform:translateX(-50%);
+ min-width:175px;
+ text-align:center;
+ background:#0a1220e8;
+ border:2px solid #58baff;
+ border-radius:10px;
+ padding:4px 12px;
+ pointer-events:none
+}
+.timer strong{
+ display:block;
+ font-size:clamp(24px,5vw,44px);
+ font-variant-numeric:tabular-nums
+}
+.timer small{
+ font-size:11px;
+ color:#cbd7e7
+}
+.panel{
+ display:flex;
+ gap:8px;
+ align-items:center;
+ justify-content:center;
+ flex-wrap:wrap
+}
+button{
+ border:0;
+ border-radius:8px;
+ background:#2d80d7;
+ color:white;
+ padding:11px 14px;
+ font-size:15px;
+ font-weight:600
+}
 button.secondary{background:#40516a}
 button:disabled{opacity:.5}
 label{font-size:13px}
-input[type=range]{vertical-align:middle;width:110px}
-.note{font-size:12px;color:#bac9d7;text-align:center}
-.scroll-space{height:125px;pointer-events:none}
+input[type=range]{
+ vertical-align:middle;
+ width:110px
+}
+input[type=number]{
+ width:55px;
+ padding:5px;
+ border-radius:5px;
+ border:1px solid #8294aa;
+ background:#1b2b40;
+ color:white;
+ font-size:14px
+}
+.note{
+ font-size:12px;
+ color:#bac9d7;
+ text-align:center
+}
+.scroll-space{
+ height:125px;
+ pointer-events:none
+}
 @media(orientation:landscape){
-.app{height:calc(100dvh - 38px);padding:4px 8px;gap:5px}
-.viewer{min-height:0}
-.panel button{padding:7px 12px}
-header{padding:5px 10px}
-.note{font-size:11px}
-.scroll-space{height:110px}
+ .app{
+  height:calc(100dvh - 38px);
+  padding:4px 8px;
+  gap:5px
+ }
+ .viewer{min-height:0}
+ .panel button{padding:7px 12px}
+ header{padding:5px 10px}
+ .note{font-size:11px}
+ .scroll-space{height:110px}
 }
 @media(orientation:portrait){
-.viewer{height:53dvh;flex:none}
-.panel{padding:6px}
+ .viewer{height:53dvh;flex:none}
+ .panel{padding:6px}
 }
 </style>
 </head>
 <body>
+
 <header>
 <h1>短距離2線タイマー</h1>
-<span id="status" class="status">カメラ未起動</span>
+<span id="status" class="status">
+カメラ未起動
+</span>
 </header>
+
 <main class="app">
+
 <div id="viewer" class="viewer">
-<video id="video" autoplay muted playsinline></video>
+<video id="video"
+ autoplay muted playsinline></video>
 <canvas id="stage"></canvas>
+
 <div class="timer">
 <small id="phase">準備中</small>
 <strong id="time">0.00</strong>
 <small>秒</small>
 </div>
 </div>
+
 <div class="panel">
-<button id="cameraBtn">カメラ開始</button>
-<button id="armBtn" disabled>計測準備</button>
-<button id="resetBtn" class="secondary">リセット</button>
-<button id="switchBtn" class="secondary">カメラ切替</button>
-<button id="testBtn" class="secondary">音声テスト</button>
-<label>感度
-<input id="sensitivity" type="range" min="10" max="100" value="42">
+
+<button id="cameraBtn">
+カメラ開始
+</button>
+
+<button id="armBtn" disabled>
+計測準備
+</button>
+
+<button id="resetBtn" class="secondary">
+リセット
+</button>
+
+<label>
+感度
+<input id="sensitivity"
+ type="range"
+ min="10"
+ max="100"
+ value="42">
 <span id="senseVal">42</span>
 </label>
+
+<label>
+読み上げ待ち
+<input id="speechDelay"
+ type="number"
+ min="0"
+ max="10"
+ step="0.5"
+ value="3">秒
+</label>
+
 </div>
+
 <div class="note">
 黄色の線＝スタート／水色の線＝ゴール。
-線を指で左右に動かせます。横向きで使用してください。
+線を指で左右に動かせます。
+横向きで使用してください。
 </div>
+
 </main>
-<div class="scroll-space" aria-hidden="true"></div>
+
+<div class="scroll-space"
+ aria-hidden="true"></div>
+
 <script>
 'use strict';
 
-const video=document.getElementById('video'),
-stage=document.getElementById('stage'),
-ctx=stage.getContext('2d');
+const video=document.getElementById('video');
+const stage=document.getElementById('stage');
+const ctx=stage.getContext('2d');
 
-const viewer=document.getElementById('viewer'),
-timeEl=document.getElementById('time'),
-phaseEl=document.getElementById('phase'),
-statusEl=document.getElementById('status');
+const viewer=document.getElementById('viewer');
+const timeEl=document.getElementById('time');
+const phaseEl=document.getElementById('phase');
+const statusEl=document.getElementById('status');
 
-const cameraBtn=document.getElementById('cameraBtn'),
-armBtn=document.getElementById('armBtn'),
-resetBtn=document.getElementById('resetBtn'),
-switchBtn=document.getElementById('switchBtn'),
-testBtn=document.getElementById('testBtn');
+const cameraBtn=document.getElementById('cameraBtn');
+const armBtn=document.getElementById('armBtn');
+const resetBtn=document.getElementById('resetBtn');
 
-const sensitivity=document.getElementById('sensitivity'),
-senseVal=document.getElementById('senseVal');
+const sensitivity=document.getElementById('sensitivity');
+const senseVal=document.getElementById('senseVal');
+const speechDelay=document.getElementById('speechDelay');
 
-let stream=null,facing='environment',audioCtx=null,
-mode='idle',startAt=0,elapsed=0,finishTimer=null;
+let stream=null;
+let audioCtx=null;
+let mode='idle';
+let startAt=0;
+let elapsed=0;
+let finishTimer=null;
 
-let startX=.30,goalX=.72,dragging=null,
-previous=null,prevAt=0,baselineStart=0,
-baselineGoal=0,lastStartHit=0,lastGoalHit=0;
+let startX=.30;
+let goalX=.72;
+let dragging=null;
+let previous=null;
+let prevAt=0;
+let baselineStart=0;
+let baselineGoal=0;
+let lastStartHit=0;
+let lastGoalHit=0;
 
 const sample=document.createElement('canvas');
 sample.width=160;
 sample.height=90;
 
-const sctx=sample.getContext('2d',{willReadFrequently:true});
+const sctx=sample.getContext('2d',{
+ willReadFrequently:true
+});
 
-function status(s){statusEl.textContent=s}
-function phase(s){phaseEl.textContent=s}
+function status(s){
+ statusEl.textContent=s;
+}
+
+function phase(s){
+ phaseEl.textContent=s;
+}
+
+function getDelay(){
+ let n=Number(speechDelay.value);
+
+ if(!Number.isFinite(n)){
+  n=3;
+ }
+
+ n=Math.max(0,Math.min(10,n));
+ speechDelay.value=String(n);
+
+ return n;
+}
+
+try{
+ const saved=localStorage.getItem('speechDelay');
+
+ if(saved!==null){
+  speechDelay.value=saved;
+ }
+
+ getDelay();
+}catch(e){}
+
+speechDelay.addEventListener('change',()=>{
+ const delay=getDelay();
+
+ try{
+  localStorage.setItem(
+   'speechDelay',String(delay)
+  );
+ }catch(e){}
+});
 
 function unlockAudio(){
-try{
-audioCtx=audioCtx||new(window.AudioContext||window.webkitAudioContext)();
-audioCtx.resume()
-}catch(e){}
+ try{
+  audioCtx=audioCtx||new(
+   window.AudioContext||
+   window.webkitAudioContext
+  )();
+
+  audioCtx.resume();
+ }catch(e){}
 }
 
 function sound(){
-try{
-unlockAudio();
-if(!audioCtx)return;
-const osc=audioCtx.createOscillator(),
-gain=audioCtx.createGain();
-osc.type='sine';
-osc.frequency.value=880;
-gain.gain.value=.08;
-osc.connect(gain);
-gain.connect(audioCtx.destination);
-const t=audioCtx.currentTime;
-osc.start(t);
-gain.gain.exponentialRampToValueAtTime(.001,t+.09);
-osc.stop(t+.10)
-}catch(e){}
+ try{
+  unlockAudio();
+
+  if(!audioCtx)return;
+
+  const osc=audioCtx.createOscillator();
+  const gain=audioCtx.createGain();
+
+  osc.type='sine';
+  osc.frequency.value=880;
+  gain.gain.value=.08;
+
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+
+  const t=audioCtx.currentTime;
+
+  osc.start(t);
+
+  gain.gain.exponentialRampToValueAtTime(
+   .001,t+.09
+  );
+
+  osc.stop(t+.10);
+ }catch(e){}
 }
 
 function speak(t){
-if(!('speechSynthesis' in window)){
-status('音声読み上げ非対応');
-return
-}
-const [whole,decimal]=Number(t).toFixed(2).split('.');
-const digits=['ゼロ','イチ','ニ','サン','ヨン',
-'ゴ','ロク','ナナ','ハチ','キュウ'];
+ if(!('speechSynthesis' in window)){
+  status('音声読み上げ非対応');
+  return;
+ }
 
-const decimalSpeech=decimal.split('')
-.map(c=>digits[Number(c)]).join('、');
+ const parts=Number(t).toFixed(2).split('.');
+ const whole=parts[0];
+ const decimal=parts[1];
 
-const u=new SpeechSynthesisUtterance(
-Number(whole)+'てん、'+decimalSpeech+'びょう'
-);
+ const digits=[
+  'ゼロ','イチ','ニ','サン','ヨン',
+  'ゴ','ロク','ナナ','ハチ','キュウ'
+ ];
 
-u.lang='ja-JP';
-u.rate=.85;
-u.volume=1;
-u.onerror=()=>status('音声が再生できません。音量と消音設定を確認');
+ const decimalSpeech=decimal.split('')
+  .map(c=>digits[Number(c)])
+  .join('、');
 
-window.speechSynthesis.cancel();
-window.speechSynthesis.speak(u)
+ // 12.34秒 → 12秒、3、4
+ const message=
+  Number(whole)+'秒、'+decimalSpeech;
+
+ const u=new SpeechSynthesisUtterance(message);
+
+ u.lang='ja-JP';
+ u.rate=.85;
+ u.volume=1;
+
+ u.onerror=()=>{
+  status('音声を再生できません');
+ };
+
+ window.speechSynthesis.cancel();
+ window.speechSynthesis.speak(u);
 }
 
 function clearSpeech(){
-clearTimeout(finishTimer);
-finishTimer=null;
-if('speechSynthesis' in window)
-window.speechSynthesis.cancel()
+ clearTimeout(finishTimer);
+ finishTimer=null;
+
+ if('speechSynthesis' in window){
+  window.speechSynthesis.cancel();
+ }
 }
 
 function reset(){
-clearSpeech();
-mode='idle';
-elapsed=0;
-timeEl.textContent='0.00';
-phase('準備中');
-baselineStart=0;
-baselineGoal=0;
-previous=null;
-armBtn.textContent='計測準備';
-status(stream?'カメラ起動中':'カメラ未起動')
+ clearSpeech();
+
+ mode='idle';
+ elapsed=0;
+ timeEl.textContent='0.00';
+
+ phase('準備中');
+
+ baselineStart=0;
+ baselineGoal=0;
+ previous=null;
+
+ armBtn.textContent='計測準備';
+
+ status(
+  stream?'カメラ起動中':'カメラ未起動'
+ );
 }
 
 function arm(){
-if(!stream)return;
-unlockAudio();
-clearSpeech();
-mode='armed';
-elapsed=0;
-timeEl.textContent='0.00';
-phase('スタート待機');
-armBtn.textContent='待機中';
-previous=null;
-baselineStart=0;
-baselineGoal=0;
-lastStartHit=performance.now();
-lastGoalHit=performance.now();
-sound();
-status('スタート線の動きを待機')
+ if(!stream)return;
+
+ unlockAudio();
+ clearSpeech();
+
+ mode='armed';
+ elapsed=0;
+
+ timeEl.textContent='0.00';
+ phase('スタート待機');
+
+ armBtn.textContent='待機中';
+
+ previous=null;
+ baselineStart=0;
+ baselineGoal=0;
+
+ lastStartHit=performance.now();
+ lastGoalHit=performance.now();
+
+ sound();
+ status('スタート線の動きを待機');
 }
 
 function finish(){
-if(mode!=='running')return;
-elapsed=(performance.now()-startAt)/1000;
-mode='finished';
-timeEl.textContent=elapsed.toFixed(2);
-phase('ゴール！');
-armBtn.textContent='再計測';
-sound();
-status('計測終了');
-finishTimer=setTimeout(()=>speak(elapsed),3000)
+ if(mode!=='running')return;
+
+ elapsed=(performance.now()-startAt)/1000;
+ mode='finished';
+
+ timeEl.textContent=elapsed.toFixed(2);
+
+ phase('ゴール！');
+ armBtn.textContent='再計測';
+
+ sound();
+ status('計測終了');
+
+ const delay=getDelay();
+
+ finishTimer=setTimeout(()=>{
+  speak(elapsed);
+ },delay*1000);
 }
 
 async function startCamera(){
-try{
-unlockAudio();
-if(stream)stream.getTracks().forEach(t=>t.stop());
+ try{
+  unlockAudio();
 
-stream=await navigator.mediaDevices.getUserMedia({
-audio:false,
-video:{
-facingMode:{ideal:facing},
-width:{ideal:1280},
-height:{ideal:720},
-frameRate:{ideal:30}
-}
-});
+  if(stream){
+   stream.getTracks().forEach(
+    t=>t.stop()
+   );
+  }
 
-video.srcObject=stream;
-await video.play();
-armBtn.disabled=false;
-reset();
-status('カメラ起動中');
-sound()
-}catch(e){
-stream=null;
-armBtn.disabled=true;
-status('カメラを起動できません');
-alert('カメラの利用を許可してください。HTTPSのGitHub Pagesで開いてください。\n'+e.message)
-}
+  stream=await navigator.mediaDevices.getUserMedia({
+   audio:false,
+   video:{
+    facingMode:{ideal:'environment'},
+    width:{ideal:1280},
+    height:{ideal:720},
+    frameRate:{ideal:30}
+   }
+  });
+
+  video.srcObject=stream;
+
+  await video.play();
+
+  armBtn.disabled=false;
+
+  reset();
+  status('カメラ起動中');
+  sound();
+
+ }catch(e){
+  stream=null;
+  armBtn.disabled=true;
+
+  status('カメラを起動できません');
+
+  alert(
+   'カメラの利用を許可してください。'+
+   'HTTPSのGitHub Pagesで開いてください。\n'+
+   e.message
+  );
+ }
 }
 
 function resize(){
-const r=viewer.getBoundingClientRect(),
-d=Math.min(devicePixelRatio||1,2);
-stage.width=Math.max(1,Math.round(r.width*d));
-stage.height=Math.max(1,Math.round(r.height*d));
-ctx.setTransform(d,0,0,d,0,0)
+ const r=viewer.getBoundingClientRect();
+ const d=Math.min(devicePixelRatio||1,2);
+
+ stage.width=Math.max(
+  1,Math.round(r.width*d)
+ );
+
+ stage.height=Math.max(
+  1,Math.round(r.height*d)
+ );
+
+ ctx.setTransform(d,0,0,d,0,0);
 }
 
 function linePosition(e){
-const r=stage.getBoundingClientRect();
-return Math.max(.05,Math.min(.95,
-(e.clientX-r.left)/r.width))
+ const r=stage.getBoundingClientRect();
+
+ return Math.max(.05,Math.min(.95,
+  (e.clientX-r.left)/r.width
+ ));
 }
 
 stage.addEventListener('pointerdown',e=>{
-const x=linePosition(e),
-a=Math.abs(x-startX),
-b=Math.abs(x-goalX);
-if(Math.min(a,b)>.09)return;
-dragging=a<b?'start':'goal';
-stage.setPointerCapture(e.pointerId);
-e.preventDefault()
+ const x=linePosition(e);
+ const a=Math.abs(x-startX);
+ const b=Math.abs(x-goalX);
+
+ if(Math.min(a,b)>.09)return;
+
+ dragging=a<b?'start':'goal';
+
+ stage.setPointerCapture(e.pointerId);
+ e.preventDefault();
 });
 
 stage.addEventListener('pointermove',e=>{
-if(!dragging)return;
-const x=linePosition(e);
-if(dragging==='start')
-startX=Math.max(.05,Math.min(x,goalX-.08));
-else
-goalX=Math.min(.95,Math.max(x,startX+.08));
-previous=null;
-e.preventDefault()
+ if(!dragging)return;
+
+ const x=linePosition(e);
+
+ if(dragging==='start'){
+  startX=Math.max(
+   .05,Math.min(x,goalX-.08)
+  );
+ }else{
+  goalX=Math.min(
+   .95,Math.max(x,startX+.08)
+  );
+ }
+
+ previous=null;
+ e.preventDefault();
 });
 
-for(const ev of ['pointerup','pointercancel'])
-stage.addEventListener(ev,()=>dragging=null);
+for(const ev of [
+ 'pointerup','pointercancel'
+]){
+ stage.addEventListener(
+  ev,()=>dragging=null
+ );
+}
 
 function activity(current,prior,x){
-const width=sample.width,
-height=sample.height,
-cx=Math.round(x*width),
-band=3;
-let total=0,count=0;
+ const width=sample.width;
+ const height=sample.height;
+ const cx=Math.round(x*width);
+ const band=3;
 
-for(let yy=8;yy<height-8;yy+=3){
-for(let xx=Math.max(0,cx-band);
-xx<=Math.min(width-1,cx+band);xx+=2){
-const i=(yy*width+xx)*4;
-const diff=(
-Math.abs(current[i]-prior[i])+
-Math.abs(current[i+1]-prior[i+1])+
-Math.abs(current[i+2]-prior[i+2])
-)/3;
-total+=diff;
-count++
-}
-}
-return count?total/count:0
+ let total=0;
+ let count=0;
+
+ for(let yy=8;yy<height-8;yy+=3){
+  for(
+   let xx=Math.max(0,cx-band);
+   xx<=Math.min(width-1,cx+band);
+   xx+=2
+  ){
+   const i=(yy*width+xx)*4;
+
+   const diff=(
+    Math.abs(current[i]-prior[i])+
+    Math.abs(current[i+1]-prior[i+1])+
+    Math.abs(current[i+2]-prior[i+2])
+   )/3;
+
+   total+=diff;
+   count++;
+  }
+ }
+
+ return count?total/count:0;
 }
 
 function detect(now){
-if(!stream||video.readyState<2||dragging)return;
-if(now-prevAt<65)return;
-prevAt=now;
+ if(
+  !stream||
+  video.readyState<2||
+  dragging
+ )return;
 
-try{
-sctx.drawImage(video,0,0,sample.width,sample.height);
-const frame=sctx.getImageData(
-0,0,sample.width,sample.height
-).data;
+ if(now-prevAt<65)return;
 
-if(previous){
-const a=activity(frame,previous,startX),
-b=activity(frame,previous,goalX);
+ prevAt=now;
 
-const threshold=26-Number(sensitivity.value)*.19;
+ try{
+  sctx.drawImage(
+   video,0,0,
+   sample.width,sample.height
+  );
 
-baselineStart=baselineStart*.92+a*.08;
-baselineGoal=baselineGoal*.92+b*.08;
+  const frame=sctx.getImageData(
+   0,0,
+   sample.width,sample.height
+  ).data;
 
-const startHit=a>threshold&&a>baselineStart*1.65,
-goalHit=b>threshold&&b>baselineGoal*1.65;
+  if(previous){
+   const a=activity(
+    frame,previous,startX
+   );
 
-if(mode==='armed'&&startHit&&now-lastStartHit>500){
-mode='running';
-startAt=performance.now();
-phase('計測中');
-status('ゴール待機');
-sound();
-lastStartHit=now;
-lastGoalHit=now
-}
-else if(mode==='running'&&goalHit&&
-now-lastGoalHit>250&&now-startAt>300){
-finish();
-lastGoalHit=now
-}
-}
-previous=new Uint8ClampedArray(frame)
-}catch(e){}
+   const b=activity(
+    frame,previous,goalX
+   );
+
+   const threshold=
+    26-Number(sensitivity.value)*.19;
+
+   baselineStart=
+    baselineStart*.92+a*.08;
+
+   baselineGoal=
+    baselineGoal*.92+b*.08;
+
+   const startHit=
+    a>threshold&&
+    a>baselineStart*1.65;
+
+   const goalHit=
+    b>threshold&&
+    b>baselineGoal*1.65;
+
+   if(
+    mode==='armed'&&
+    startHit&&
+    now-lastStartHit>500
+   ){
+    mode='running';
+    startAt=performance.now();
+
+    phase('計測中');
+    status('ゴール待機');
+
+    sound();
+
+    lastStartHit=now;
+    lastGoalHit=now;
+   }
+   else if(
+    mode==='running'&&
+    goalHit&&
+    now-lastGoalHit>250&&
+    now-startAt>300
+   ){
+    finish();
+    lastGoalHit=now;
+   }
+  }
+
+  previous=new Uint8ClampedArray(frame);
+
+ }catch(e){}
 }
 
 function draw(now){
-const w=viewer.clientWidth,
-h=viewer.clientHeight;
-ctx.clearRect(0,0,w,h);
+ const w=viewer.clientWidth;
+ const h=viewer.clientHeight;
 
-if(mode==='running')
-timeEl.textContent=(
-(performance.now()-startAt)/1000
-).toFixed(2);
+ ctx.clearRect(0,0,w,h);
 
-for(const [x,color,name] of [
-[startX,'#ffd34d','スタート'],
-[goalX,'#42d9ff','ゴール']
-]){
-ctx.strokeStyle=color;
-ctx.lineWidth=4;
-ctx.beginPath();
-ctx.moveTo(x*w,0);
-ctx.lineTo(x*w,h);
-ctx.stroke();
+ if(mode==='running'){
+  timeEl.textContent=(
+   (performance.now()-startAt)/1000
+  ).toFixed(2);
+ }
 
-ctx.font='bold 15px sans-serif';
-const textW=ctx.measureText(name).width+18,
-tx=Math.min(w-textW,Math.max(0,x*w-textW/2));
+ for(const [x,color,name] of [
+  [startX,'#ffd34d','スタート'],
+  [goalX,'#42d9ff','ゴール']
+ ]){
+  ctx.strokeStyle=color;
+  ctx.lineWidth=4;
 
-ctx.fillStyle='#101722cc';
-ctx.fillRect(tx,h-35,textW,27);
-ctx.fillStyle=color;
-ctx.fillText(name,tx+9,h-16)
+  ctx.beginPath();
+  ctx.moveTo(x*w,0);
+  ctx.lineTo(x*w,h);
+  ctx.stroke();
+
+  ctx.font='bold 15px sans-serif';
+
+  const textW=
+   ctx.measureText(name).width+18;
+
+  const tx=Math.min(
+   w-textW,
+   Math.max(0,x*w-textW/2)
+  );
+
+  ctx.fillStyle='#101722cc';
+  ctx.fillRect(
+   tx,h-35,textW,27
+  );
+
+  ctx.fillStyle=color;
+  ctx.fillText(
+   name,tx+9,h-16
+  );
+ }
+
+ detect(now);
+ requestAnimationFrame(draw);
 }
 
-detect(now);
-requestAnimationFrame(draw)
-}
-
-cameraBtn.addEventListener('click',startCamera);
-armBtn.addEventListener('click',arm);
-resetBtn.addEventListener('click',reset);
-
-switchBtn.addEventListener('click',()=>{
-facing=facing==='environment'?'user':'environment';
-startCamera()
-});
-
-testBtn.addEventListener('click',()=>{
-unlockAudio();
-clearSpeech();
-speak(12.34)
-});
-
-sensitivity.addEventListener('input',()=>
-senseVal.textContent=sensitivity.value
+cameraBtn.addEventListener(
+ 'click',startCamera
 );
 
+armBtn.addEventListener(
+ 'click',arm
+);
+
+resetBtn.addEventListener(
+ 'click',reset
+);
+
+sensitivity.addEventListener('input',()=>{
+ senseVal.textContent=sensitivity.value;
+});
+
 window.addEventListener('resize',resize);
+
 new ResizeObserver(resize).observe(viewer);
+
 resize();
 requestAnimationFrame(draw);
 </script>
 </body>
 </html>
+

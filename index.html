@@ -7,15 +7,14 @@
 <title>短距離2線タイマー</title>
 <style>
 *{box-sizing:border-box}
-body{margin:0;background:#101722;color:white;font-family:-apple-system,BlinkMacSystemFont,sans-serif}
+html{min-height:100%;overflow-y:auto}
+body{margin:0;background:#101722;color:#fff;font-family:-apple-system,BlinkMacSystemFont,sans-serif;min-height:100%;overflow-x:hidden}
 header{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 12px}
-h1{font-size:17px;margin:0}
-.status{font-size:12px;color:#b9c9d9}
+h1{font-size:17px;margin:0}.status{font-size:12px;color:#b9c9d9}
 .app{display:flex;flex-direction:column;gap:7px;padding:8px;max-width:1200px;margin:auto}
 .viewer{position:relative;background:#000;border:1px solid #526274;border-radius:10px;overflow:hidden;min-height:170px;flex:1}
 video,canvas{position:absolute;width:100%;height:100%;inset:0;object-fit:fill}
-video{object-fit:cover}
-canvas{touch-action:none}
+video{object-fit:cover}canvas{touch-action:none}
 .timer{position:absolute;top:8px;left:50%;transform:translateX(-50%);min-width:175px;text-align:center;background:#0a1220e8;border:2px solid #58baff;border-radius:10px;padding:4px 12px;pointer-events:none}
 .timer strong{display:block;font-size:clamp(24px,5vw,44px);font-variant-numeric:tabular-nums}
 .timer small{font-size:11px;color:#cbd7e7}
@@ -26,13 +25,14 @@ button:disabled{opacity:.5}
 label{font-size:13px}
 input[type=range]{vertical-align:middle;width:110px}
 .note{font-size:12px;color:#bac9d7;text-align:center}
-.camera{width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}
+.scroll-space{height:125px;pointer-events:none}
 @media(orientation:landscape){
 .app{height:calc(100dvh - 38px);padding:4px 8px;gap:5px}
 .viewer{min-height:0}
 .panel button{padding:7px 12px}
 header{padding:5px 10px}
 .note{font-size:11px}
+.scroll-space{height:110px}
 }
 @media(orientation:portrait){
 .viewer{height:53dvh;flex:none}
@@ -60,32 +60,68 @@ header{padding:5px 10px}
 <button id="armBtn" disabled>計測準備</button>
 <button id="resetBtn" class="secondary">リセット</button>
 <button id="switchBtn" class="secondary">カメラ切替</button>
+<button id="testBtn" class="secondary">音声テスト</button>
 <label>感度
 <input id="sensitivity" type="range" min="10" max="100" value="42">
 <span id="senseVal">42</span>
 </label>
 </div>
-<div class="note">黄色の線＝スタート／水色の線＝ゴール。線を指で左右に動かせます。横向きで使用してください。</div>
+<div class="note">
+黄色の線＝スタート／水色の線＝ゴール。
+線を指で左右に動かせます。横向きで使用してください。
+</div>
 </main>
+<div class="scroll-space" aria-hidden="true"></div>
 <script>
 'use strict';
-const video=document.getElementById('video'),stage=document.getElementById('stage'),ctx=stage.getContext('2d');
-const viewer=document.getElementById('viewer'),timeEl=document.getElementById('time'),phaseEl=document.getElementById('phase'),statusEl=document.getElementById('status');
-const cameraBtn=document.getElementById('cameraBtn'),armBtn=document.getElementById('armBtn'),resetBtn=document.getElementById('resetBtn'),switchBtn=document.getElementById('switchBtn');
-const sensitivity=document.getElementById('sensitivity'),senseVal=document.getElementById('senseVal');
-let stream=null,facing='environment',audioCtx=null,mode='idle',startAt=0,elapsed=0,finishTimer=null;
-let startX=.30,goalX=.72,dragging=null,previous=null,prevAt=0,baselineStart=0,baselineGoal=0,lastStartHit=0,lastGoalHit=0;
+
+const video=document.getElementById('video'),
+stage=document.getElementById('stage'),
+ctx=stage.getContext('2d');
+
+const viewer=document.getElementById('viewer'),
+timeEl=document.getElementById('time'),
+phaseEl=document.getElementById('phase'),
+statusEl=document.getElementById('status');
+
+const cameraBtn=document.getElementById('cameraBtn'),
+armBtn=document.getElementById('armBtn'),
+resetBtn=document.getElementById('resetBtn'),
+switchBtn=document.getElementById('switchBtn'),
+testBtn=document.getElementById('testBtn');
+
+const sensitivity=document.getElementById('sensitivity'),
+senseVal=document.getElementById('senseVal');
+
+let stream=null,facing='environment',audioCtx=null,
+mode='idle',startAt=0,elapsed=0,finishTimer=null;
+
+let startX=.30,goalX=.72,dragging=null,
+previous=null,prevAt=0,baselineStart=0,
+baselineGoal=0,lastStartHit=0,lastGoalHit=0;
+
 const sample=document.createElement('canvas');
 sample.width=160;
 sample.height=90;
+
 const sctx=sample.getContext('2d',{willReadFrequently:true});
+
 function status(s){statusEl.textContent=s}
 function phase(s){phaseEl.textContent=s}
-function sound(){
+
+function unlockAudio(){
 try{
 audioCtx=audioCtx||new(window.AudioContext||window.webkitAudioContext)();
-audioCtx.resume();
-const osc=audioCtx.createOscillator(),gain=audioCtx.createGain();
+audioCtx.resume()
+}catch(e){}
+}
+
+function sound(){
+try{
+unlockAudio();
+if(!audioCtx)return;
+const osc=audioCtx.createOscillator(),
+gain=audioCtx.createGain();
 osc.type='sine';
 osc.frequency.value=880;
 gain.gain.value=.08;
@@ -97,22 +133,39 @@ gain.gain.exponentialRampToValueAtTime(.001,t+.09);
 osc.stop(t+.10)
 }catch(e){}
 }
+
 function speak(t){
-if(!('speechSynthesis' in window))return;
-const [whole,decimal]=t.toFixed(2).split('.');
-const digits=['ゼロ','イチ','ニ','サン','ヨン','ゴ','ロク','ナナ','ハチ','キュウ'];
-const decimalSpeech=decimal.split('').map(c=>digits[Number(c)]).join('、');
-const u=new SpeechSynthesisUtterance(whole+'てん、'+decimalSpeech+'びょう');
+if(!('speechSynthesis' in window)){
+status('音声読み上げ非対応');
+return
+}
+const [whole,decimal]=Number(t).toFixed(2).split('.');
+const digits=['ゼロ','イチ','ニ','サン','ヨン',
+'ゴ','ロク','ナナ','ハチ','キュウ'];
+
+const decimalSpeech=decimal.split('')
+.map(c=>digits[Number(c)]).join('、');
+
+const u=new SpeechSynthesisUtterance(
+Number(whole)+'てん、'+decimalSpeech+'びょう'
+);
+
 u.lang='ja-JP';
 u.rate=.85;
+u.volume=1;
+u.onerror=()=>status('音声が再生できません。音量と消音設定を確認');
+
 window.speechSynthesis.cancel();
 window.speechSynthesis.speak(u)
 }
+
 function clearSpeech(){
 clearTimeout(finishTimer);
 finishTimer=null;
-if('speechSynthesis' in window)window.speechSynthesis.cancel()
+if('speechSynthesis' in window)
+window.speechSynthesis.cancel()
 }
+
 function reset(){
 clearSpeech();
 mode='idle';
@@ -125,8 +178,10 @@ previous=null;
 armBtn.textContent='計測準備';
 status(stream?'カメラ起動中':'カメラ未起動')
 }
+
 function arm(){
 if(!stream)return;
+unlockAudio();
 clearSpeech();
 mode='armed';
 elapsed=0;
@@ -141,21 +196,24 @@ lastGoalHit=performance.now();
 sound();
 status('スタート線の動きを待機')
 }
+
 function finish(){
 if(mode!=='running')return;
 elapsed=(performance.now()-startAt)/1000;
 mode='finished';
-const shown=elapsed.toFixed(2);
-timeEl.textContent=shown;
+timeEl.textContent=elapsed.toFixed(2);
 phase('ゴール！');
 armBtn.textContent='再計測';
 sound();
 status('計測終了');
 finishTimer=setTimeout(()=>speak(elapsed),3000)
 }
+
 async function startCamera(){
 try{
+unlockAudio();
 if(stream)stream.getTracks().forEach(t=>t.stop());
+
 stream=await navigator.mediaDevices.getUserMedia({
 audio:false,
 video:{
@@ -165,6 +223,7 @@ height:{ideal:720},
 frameRate:{ideal:30}
 }
 });
+
 video.srcObject=stream;
 await video.play();
 armBtn.disabled=false;
@@ -172,65 +231,97 @@ reset();
 status('カメラ起動中');
 sound()
 }catch(e){
+stream=null;
+armBtn.disabled=true;
 status('カメラを起動できません');
 alert('カメラの利用を許可してください。HTTPSのGitHub Pagesで開いてください。\n'+e.message)
 }
 }
+
 function resize(){
-const r=viewer.getBoundingClientRect(),d=Math.min(devicePixelRatio||1,2);
+const r=viewer.getBoundingClientRect(),
+d=Math.min(devicePixelRatio||1,2);
 stage.width=Math.max(1,Math.round(r.width*d));
 stage.height=Math.max(1,Math.round(r.height*d));
 ctx.setTransform(d,0,0,d,0,0)
 }
+
 function linePosition(e){
 const r=stage.getBoundingClientRect();
-return Math.max(.05,Math.min(.95,(e.clientX-r.left)/r.width))
+return Math.max(.05,Math.min(.95,
+(e.clientX-r.left)/r.width))
 }
+
 stage.addEventListener('pointerdown',e=>{
-const x=linePosition(e);
-const a=Math.abs(x-startX),b=Math.abs(x-goalX);
+const x=linePosition(e),
+a=Math.abs(x-startX),
+b=Math.abs(x-goalX);
 if(Math.min(a,b)>.09)return;
 dragging=a<b?'start':'goal';
 stage.setPointerCapture(e.pointerId);
 e.preventDefault()
 });
+
 stage.addEventListener('pointermove',e=>{
 if(!dragging)return;
 const x=linePosition(e);
-if(dragging==='start')startX=Math.min(x,goalX-.08);
-else goalX=Math.max(x,startX+.08);
+if(dragging==='start')
+startX=Math.max(.05,Math.min(x,goalX-.08));
+else
+goalX=Math.min(.95,Math.max(x,startX+.08));
 previous=null;
 e.preventDefault()
 });
+
 for(const ev of ['pointerup','pointercancel'])
 stage.addEventListener(ev,()=>dragging=null);
+
 function activity(current,prior,x){
-const width=sample.width,height=sample.height,cx=Math.round(x*width),band=3;
+const width=sample.width,
+height=sample.height,
+cx=Math.round(x*width),
+band=3;
 let total=0,count=0;
+
 for(let yy=8;yy<height-8;yy+=3){
-for(let xx=Math.max(0,cx-band);xx<=Math.min(width-1,cx+band);xx+=2){
+for(let xx=Math.max(0,cx-band);
+xx<=Math.min(width-1,cx+band);xx+=2){
 const i=(yy*width+xx)*4;
-const diff=(Math.abs(current[i]-prior[i])+Math.abs(current[i+1]-prior[i+1])+Math.abs(current[i+2]-prior[i+2]))/3;
+const diff=(
+Math.abs(current[i]-prior[i])+
+Math.abs(current[i+1]-prior[i+1])+
+Math.abs(current[i+2]-prior[i+2])
+)/3;
 total+=diff;
 count++
 }
 }
 return count?total/count:0
 }
+
 function detect(now){
 if(!stream||video.readyState<2||dragging)return;
 if(now-prevAt<65)return;
 prevAt=now;
+
 try{
 sctx.drawImage(video,0,0,sample.width,sample.height);
-const frame=sctx.getImageData(0,0,sample.width,sample.height).data;
+const frame=sctx.getImageData(
+0,0,sample.width,sample.height
+).data;
+
 if(previous){
-const a=activity(frame,previous,startX),b=activity(frame,previous,goalX);
+const a=activity(frame,previous,startX),
+b=activity(frame,previous,goalX);
+
 const threshold=26-Number(sensitivity.value)*.19;
+
 baselineStart=baselineStart*.92+a*.08;
 baselineGoal=baselineGoal*.92+b*.08;
-const startHit=a>threshold&&a>baselineStart*1.65;
-const goalHit=b>threshold&&b>baselineGoal*1.65;
+
+const startHit=a>threshold&&a>baselineStart*1.65,
+goalHit=b>threshold&&b>baselineGoal*1.65;
+
 if(mode==='armed'&&startHit&&now-lastStartHit>500){
 mode='running';
 startAt=performance.now();
@@ -239,7 +330,9 @@ status('ゴール待機');
 sound();
 lastStartHit=now;
 lastGoalHit=now
-}else if(mode==='running'&&goalHit&&now-lastGoalHit>250&&now-startAt>300){
+}
+else if(mode==='running'&&goalHit&&
+now-lastGoalHit>250&&now-startAt>300){
 finish();
 lastGoalHit=now
 }
@@ -247,36 +340,61 @@ lastGoalHit=now
 previous=new Uint8ClampedArray(frame)
 }catch(e){}
 }
+
 function draw(now){
-const w=viewer.clientWidth,h=viewer.clientHeight;
+const w=viewer.clientWidth,
+h=viewer.clientHeight;
 ctx.clearRect(0,0,w,h);
-if(mode==='running')timeEl.textContent=((performance.now()-startAt)/1000).toFixed(2);
-for(const [x,color,name] of [[startX,'#ffd34d','スタート'],[goalX,'#42d9ff','ゴール']]){
+
+if(mode==='running')
+timeEl.textContent=(
+(performance.now()-startAt)/1000
+).toFixed(2);
+
+for(const [x,color,name] of [
+[startX,'#ffd34d','スタート'],
+[goalX,'#42d9ff','ゴール']
+]){
 ctx.strokeStyle=color;
 ctx.lineWidth=4;
 ctx.beginPath();
 ctx.moveTo(x*w,0);
 ctx.lineTo(x*w,h);
 ctx.stroke();
+
 ctx.font='bold 15px sans-serif';
-const textW=ctx.measureText(name).width+18;
-const tx=Math.min(w-textW,Math.max(0,x*w-textW/2));
+const textW=ctx.measureText(name).width+18,
+tx=Math.min(w-textW,Math.max(0,x*w-textW/2));
+
 ctx.fillStyle='#101722cc';
 ctx.fillRect(tx,h-35,textW,27);
 ctx.fillStyle=color;
 ctx.fillText(name,tx+9,h-16)
 }
+
 detect(now);
 requestAnimationFrame(draw)
 }
+
 cameraBtn.addEventListener('click',startCamera);
 armBtn.addEventListener('click',arm);
 resetBtn.addEventListener('click',reset);
+
 switchBtn.addEventListener('click',()=>{
 facing=facing==='environment'?'user':'environment';
 startCamera()
 });
-sensitivity.addEventListener('input',()=>senseVal.textContent=sensitivity.value);
+
+testBtn.addEventListener('click',()=>{
+unlockAudio();
+clearSpeech();
+speak(12.34)
+});
+
+sensitivity.addEventListener('input',()=>
+senseVal.textContent=sensitivity.value
+);
+
 window.addEventListener('resize',resize);
 new ResizeObserver(resize).observe(viewer);
 resize();
